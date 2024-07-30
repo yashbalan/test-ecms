@@ -9,14 +9,12 @@ import os
 # Streamlit configuration
 st.set_page_config(layout="wide", page_title="Hopcharge Dashboard", page_icon=":bar_chart:")
 
-
 # Function to clean license plates
 def clean_license_plate(plate):
     match = re.match(r"([A-Z]+[0-9]+)(_R)$", plate)
     if match:
         return match.group(1)
     return plate
-
 
 # Function to get data from the API
 def fetch_data(url):
@@ -35,7 +33,6 @@ def fetch_data(url):
     else:
         return pd.DataFrame()  # Return an empty DataFrame if 'data' key is not found
 
-
 # Function to get data from CSV files
 def get_csv_files(directory_path):
     file_list = []
@@ -47,7 +44,6 @@ def get_csv_files(directory_path):
     df_list = [pd.read_csv(file) for file in file_list]
     concatenated_df = pd.concat(df_list, ignore_index=True)
     return concatenated_df
-
 
 # URLs for the APIs
 url_bookings = "https://2e855a4f93a0.api.hopcharge.com/admin/api/v1/bookings/past?filter={\"chargedAt_lte\":\"2024-06-01\",\"chargedAt_gte\":\"2024-12-31\"}&range=[0,3000000]&sort=[\"created\",\"DESC\"]"
@@ -132,15 +128,55 @@ for epod, start_date in epod_start_dates.items():
     start_date = pd.to_datetime(start_date).date()
     combined_df = combined_df[~((combined_df['EPOD Name'] == epod) & (combined_df['Actual Date'] < start_date))]
 
-
 # Function to format numbers in INR
 def formatINR(number):
     s, *d = str(number).partition(".")
     r = ",".join([s[x - 2:x] for x in range(-3, -len(s), -2)][::-1] + [s[-3:]])
     return "".join([r] + d)
 
+def check_credentials():
+    st.markdown(
+        """
+            <style>
+                .appview-container .main .block-container {{
+                    padding-top: {padding_top}rem;
+                    padding-bottom: {padding_bottom}rem;
+                    }}
 
-def main_page():
+            </style>""".format(
+            padding_top=1, padding_bottom=1
+        ),
+        unsafe_allow_html=True,
+    )
+    col1, col2, col3 = st.columns(3)
+
+    image = Image.open('LOGO HOPCHARGE-03.png')
+    col2.image(image, use_column_width=True)
+    col2.markdown(
+        "<h2 style='text-align: center;'>ECMS Login</h2>", unsafe_allow_html=True)
+    image = Image.open('roaming vans.png')
+    col1.image(image, use_column_width=True)
+
+    with col2:
+        username = st.text_input("Username")
+        password = st.text_input(
+            "Password", type="password")
+    flag = 0
+    if username in st.secrets["username"] and password in st.secrets["password"]:
+        index = st.secrets["username"].index(username)
+        if st.secrets["password"][index] == password:
+            st.session_state["logged_in"] = True
+            flag = 1
+        else:
+            col2.warning("Invalid username or password.")
+            flag = 0
+    elif username not in st.secrets["username"] or password not in st.secrets["password"]:
+        col2.warning("Invalid username or password.")
+        flag = 0
+    ans = [username, flag]
+    return ans
+
+def main_page(username):
     st.markdown(
         """
         <script>
@@ -182,7 +218,14 @@ def main_page():
         end_date = st.date_input('End Date', min_value=min_date, max_value=max_date, value=max_date,
                                  key="epod-date-end")
 
-    epods = df_epod['EPOD Name'].tolist()
+
+    def get_epods_by_username(df, input_username):
+        filtered_df = df[df['username'].str.contains(input_username, na=False)]
+        epod_list = filtered_df['EPOD Name'].tolist()
+
+        return epod_list
+
+    epods = get_epods_by_username(df_epod, username)
 
     with col3:
         EPod = st.multiselect(label='Select The EPod', options=['All'] + epods, default='All')
@@ -282,6 +325,15 @@ def main_page():
             with col1:
                 st.plotly_chart(fig)
 
+# Authentication check and main function execution
+if "logged_in" not in st.session_state:
+    st.session_state["logged_in"] = False
 
-# Run the main page function
-main_page()
+if not st.session_state["logged_in"]:
+    credentials = check_credentials()
+    if credentials[1]:
+        st.session_state["logged_in"] = True
+        username = credentials[0]
+        main_page(username)
+else:
+    main_page(st.session_state.get("username", ""))
