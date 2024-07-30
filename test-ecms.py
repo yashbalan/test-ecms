@@ -9,14 +9,12 @@ import os
 # Streamlit configuration
 st.set_page_config(layout="wide", page_title="Hopcharge Dashboard", page_icon=":bar_chart:")
 
-
 # Function to clean license plates
 def clean_license_plate(plate):
     match = re.match(r"([A-Z]+[0-9]+)(_R)$", plate)
     if match:
         return match.group(1)
     return plate
-
 
 # Function to get data from the API
 def fetch_data(url):
@@ -35,7 +33,6 @@ def fetch_data(url):
     else:
         return pd.DataFrame()  # Return an empty DataFrame if 'data' key is not found
 
-
 # Function to get data from CSV files
 def get_csv_files(directory_path):
     file_list = []
@@ -47,7 +44,6 @@ def get_csv_files(directory_path):
     df_list = [pd.read_csv(file) for file in file_list]
     concatenated_df = pd.concat(df_list, ignore_index=True)
     return concatenated_df
-
 
 # URLs for the APIs
 url_bookings = "https://2e855a4f93a0.api.hopcharge.com/admin/api/v1/bookings/past?filter={\"chargedAt_lte\":\"2024-06-01\",\"chargedAt_gte\":\"2024-12-31\"}&range=[0,3000000]&sort=[\"created\",\"DESC\"]"
@@ -222,7 +218,6 @@ def main_page(username):
         end_date = st.date_input('End Date', min_value=min_date, max_value=max_date, value=max_date,
                                  key="epod-date-end")
 
-
     def get_epods_by_username(df, input_username):
         filtered_df = df[df['username'].str.contains(input_username, na=False)]
         epod_list = filtered_df['EPOD Name'].tolist()
@@ -329,19 +324,13 @@ def main_page(username):
             with col1:
                 st.plotly_chart(fig)
 
-
-
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if st.session_state.logged_in:
-    main_page(st.session_state.username)      
+    main_page(st.session_state.username)
 else:
     ans = check_credentials()
     if ans[1]:
         st.session_state.logged_in = True
         st.session_state.username = ans[0]
         st.experimental_rerun()
-        
-
-# Run the main page function
-#main_page()
