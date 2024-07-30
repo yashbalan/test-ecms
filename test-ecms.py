@@ -119,6 +119,19 @@ if not past_bookings_df.empty and not drivers_shifts_df.empty:
 # Combine CSV and API data
 combined_df = pd.concat([merged_df_csv, merged_df_api], ignore_index=True)
 
+# Freeze start dates for specified EPODs
+epod_start_dates = {
+    "EPOD-005": "2024-01-22",
+    "EPOD-007": "2024-03-15",
+    "EPOD-010": "2024-05-10",
+    "EPOD-011": "2023-11-10",
+    "EPOD-012": "2024-03-29"
+}
+
+for epod, start_date in epod_start_dates.items():
+    start_date = pd.to_datetime(start_date).date()
+    combined_df = combined_df[~((combined_df['EPOD Name'] == epod) & (combined_df['Actual Date'] < start_date))]
+
 
 # Function to format numbers in INR
 def formatINR(number):
