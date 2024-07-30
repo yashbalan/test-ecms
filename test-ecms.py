@@ -1,0 +1,274 @@
+import streamlit as st
+import pandas as pd
+import plotly.express as px
+from PIL import Image
+import requests
+import re
+import os
+
+# Streamlit configuration
+st.set_page_config(layout="wide", page_title="Hopcharge Dashboard", page_icon=":bar_chart:")
+
+
+# Function to clean license plates
+def clean_license_plate(plate):
+    match = re.match(r"([A-Z]+[0-9]+)(_R)$", plate)
+    if match:
+        return match.group(1)
+    return plate
+
+
+# Function to get data from the API
+def fetch_data(url):
+    payload = {
+        "username": "admin",
+        "password": "Hopadmin@2024#"
+    }
+    headers = {
+        'accept': 'application/json',
+        'authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI3NDIxZDRmNi0zZWI2LTRhODItOWU0Ny02MWU3MWViOTI5Y2EiLCJlbWFpbCI6ImhlbGxvQGhvcGNoYXJnZS5jb20iLCJwaG9uZU51bWJlciI6Iis5MTkzMTE2NjEyODgsICs5MTkyODkwNDYyOTcsKzkxOTgyMDg1NDAwNiwrOTE4NTg4ODYyNjQ4LCs5MTcwNTM0NTcxMjQiLCJmaXJzdE5hbWUiOiJTdXBlciIsImxhc3ROYW1lIjoiQWRtaW4iLCJjcmVhdGVkIjoiMjAyMS0wNi0wMVQxNzowMTozMC42MjhaIiwidXBkYXRlZCI6IjIwMjQtMDQtMDlUMDU6MTc6NDcuNzQ4WiIsImxhc3RMb2dpbiI6IjIwMjQtMDctMjRUMDU6Mzc6MjMuNTM3WiIsImxhc3RMb2dvdXQiOiIyMDI0LTA0LTA5VDA1OjE3OjQ3Ljc0OVoiLCJ1c2VybmFtZSI6ImFkbWluIiwicm9sZSI6InN1cGVyYWRtaW4iLCJpYXQiOjE3MjE3OTk0NDN9.eg_aP1gUcAJXGX1jNMgFX6CAfeLDSc5JpFFMWVG_ttU'
+    }
+    response = requests.get(url, headers=headers, data=payload)
+    response_json = response.json()
+    if 'data' in response_json:
+        return pd.json_normalize(response_json['data'])
+    else:
+        return pd.DataFrame()  # Return an empty DataFrame if 'data' key is not found
+
+
+# Function to get data from CSV files
+def get_csv_files(directory_path):
+    file_list = []
+    for root, dirs, files in os.walk(directory_path):
+        for file in files:
+            if file.endswith(".csv"):
+                file_path = os.path.join(root, file)
+                file_list.append(file_path)
+    df_list = [pd.read_csv(file) for file in file_list]
+    concatenated_df = pd.concat(df_list, ignore_index=True)
+    return concatenated_df
+
+
+# URLs for the APIs
+url_bookings = "https://2e855a4f93a0.api.hopcharge.com/admin/api/v1/bookings/past?filter={\"chargedAt_lte\":\"2024-06-01\",\"chargedAt_gte\":\"2024-12-31\"}&range=[0,3000000]&sort=[\"created\",\"DESC\"]"
+url_drivers = "https://2e855a4f93a0.api.hopcharge.com/admin/api/v1/drivers-shifts/export-list?filter={\"action\":\"exporter\",\"startedAt_lte\":\"2024-06-01\",\"endedAt_gte\":\"2024-12-31\"}"
+
+# Fetch data from the APIs
+past_bookings_df = fetch_data(url_bookings)
+drivers_shifts_df = fetch_data(url_drivers)
+
+# Load and clean CSV data
+csv_directory_path = './data'
+df_csv = get_csv_files(csv_directory_path)
+df_csv = df_csv[df_csv['canceled'] != True]
+df_csv['licensePlate'] = df_csv['licensePlate'].str.upper()
+df_csv['licensePlate'] = df_csv['licensePlate'].str.replace('HR55AJ4OO3', 'HR55AJ4003')
+df_csv['fromTime'] = pd.to_datetime(df_csv['fromTime'])
+df_csv.rename(columns={'location.state': 'Customer Location City', 'fromTime': 'Actual Date'}, inplace=True)
+df_csv['Actual Date'] = pd.to_datetime(df_csv['Actual Date'], format='mixed', errors='coerce')
+df_csv = df_csv[df_csv['Actual Date'].dt.year > 2021]
+df_csv['Actual Date'] = df_csv['Actual Date'].dt.date
+df_csv['Customer Location City'].replace({'Haryana': 'Gurugram', 'Uttar Pradesh': 'Noida'}, inplace=True)
+cities = ['Gurugram', 'Noida', 'Delhi']
+df_csv = df_csv[df_csv['Customer Location City'].isin(cities)]
+
+# Merge CSV data with EPOD data
+df_epod = pd.read_csv('EPOD NUMBER.csv')
+requiredcols = ['Actual Date', 'EPOD Name', 'Customer Location City']
+merged_df_csv = pd.merge(df_csv, df_epod, on=["licensePlate"])
+merged_df_csv = merged_df_csv[requiredcols]
+
+# Clean and filter API data
+if not past_bookings_df.empty and not drivers_shifts_df.empty:
+    drivers_shifts_df['licensePlate'] = drivers_shifts_df['licensePlate'].apply(clean_license_plate)
+    filtered_drivers_df = drivers_shifts_df[(drivers_shifts_df['donorVMode'] == 'FALSE') &
+                                            (drivers_shifts_df['bookingStatus'] == 'completed')]
+
+    merged_df_api = pd.merge(filtered_drivers_df, past_bookings_df[['uid', 'location.state']],
+                             left_on='bookingUid', right_on='uid', how='left')
+
+    merged_df_api['Actual Date'] = pd.to_datetime(merged_df_api['bookingFromTime'], errors='coerce')
+    final_df_api = merged_df_api[['Actual Date', 'licensePlate', 'location.state', 'bookingUid', 'uid',
+                                  'bookingFromTime', 'bookingStatus', 'customerUid', 'totalUnitsCharged']].rename(
+        columns={'location.state': 'Customer Location City'})
+
+    final_df_api = final_df_api.dropna(subset=['Actual Date']).drop_duplicates(
+        subset=['uid', 'bookingUid', 'Actual Date'])
+
+    final_df_api['licensePlate'] = final_df_api['licensePlate'].str.upper()
+    replace_dict = {
+        'HR551305': 'HR55AJ1305',
+        'HR552932': 'HR55AJ2932',
+        'HR551216': 'HR55AJ1216',
+        'HR555061': 'HR55AN5061',
+        'HR554745': 'HR55AR4745',
+        'HR55AN1216': 'HR55AJ1216',
+        'HR55AN8997': 'HR55AN8997'
+    }
+    final_df_api['licensePlate'] = final_df_api['licensePlate'].replace(replace_dict)
+    final_df_api['Actual Date'] = pd.to_datetime(final_df_api['Actual Date'], errors='coerce')
+    final_df_api = final_df_api[final_df_api['Actual Date'].dt.year > 2021]
+    final_df_api['Actual Date'] = final_df_api['Actual Date'].dt.date
+
+    final_df_api['Customer Location City'].replace({'Haryana': 'Gurugram', 'Uttar Pradesh': 'Noida'}, inplace=True)
+    final_df_api = final_df_api[final_df_api['Customer Location City'].isin(cities)]
+
+    merged_df_api = pd.merge(final_df_api, df_epod, on=["licensePlate"])
+    merged_df_api = merged_df_api[requiredcols]
+
+# Combine CSV and API data
+combined_df = pd.concat([merged_df_csv, merged_df_api], ignore_index=True)
+
+
+# Function to format numbers in INR
+def formatINR(number):
+    s, *d = str(number).partition(".")
+    r = ",".join([s[x - 2:x] for x in range(-3, -len(s), -2)][::-1] + [s[-3:]])
+    return "".join([r] + d)
+
+
+def main_page():
+    st.markdown(
+        """
+        <script>
+        function refresh() {
+            window.location.reload();
+        }
+        setTimeout(refresh, 120000);
+        </script>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        """
+        <style>
+            .appview-container .main .block-container {{
+                padding-top: 1rem;
+                padding-bottom: 1rem;
+            }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    col1, col2, col3, col4, col5 = st.columns(5)
+    image = Image.open('LOGO HOPCHARGE-03.png')
+    col1.image(image, use_column_width=True)
+
+    st.markdown("<h2 style='text-align: left;'>EV Charging Management System</h2>", unsafe_allow_html=True)
+
+    col1, col2, col3, col4, col5, col6 = st.columns(6)
+
+    with col1:
+        combined_df['Actual Date'] = pd.to_datetime(combined_df['Actual Date'], errors='coerce')
+        min_date = combined_df['Actual Date'].min().date()
+        max_date = combined_df['Actual Date'].max().date()
+        start_date = st.date_input('Start Date', min_value=min_date, max_value=max_date, value=min_date,
+                                   key="epod-date-start")
+    with col2:
+        end_date = st.date_input('End Date', min_value=min_date, max_value=max_date, value=max_date,
+                                 key="epod-date-end")
+
+    epods = df_epod['EPOD Name'].tolist()
+
+    with col3:
+        EPod = st.multiselect(label='Select The EPod', options=['All'] + epods, default='All')
+    if 'All' in EPod:
+        EPod = epods
+
+    start_date = pd.to_datetime(start_date)
+    end_date = pd.to_datetime(end_date)
+    filtered_data = combined_df[(combined_df['Actual Date'] >= start_date) & (combined_df['Actual Date'] <= end_date)]
+
+    filtered_data = filtered_data[(filtered_data['EPOD Name'].isin(EPod))]
+    filtered_data['Actual Date'] = pd.to_datetime(filtered_data['Actual Date'])
+    final_df_count = filtered_data.groupby(['Actual Date', 'Customer Location City']).size().reset_index(
+        name='Session Count')
+    final_df_count['Actual Date'] = final_df_count['Actual Date'].dt.strftime('%d/%m/%y')
+
+    sumcount = final_df_count['Session Count'].sum()
+    col4.metric("Total Sessions of EPods", formatINR(sumcount))
+    revenue = sumcount * 150
+    revenue = formatINR(revenue)
+    col5.metric("Total Revenue", f"\u20B9{revenue}")
+
+    fig = px.bar(final_df_count, x='Actual Date', y='Session Count',
+                 color_discrete_map={'Delhi': '#243465', 'Gurugram': ' #5366a0', 'Noida': '#919fc8'},
+                 color='Customer Location City', text=final_df_count['Session Count'])
+    total_counts = final_df_count.groupby('Actual Date')['Session Count'].sum().reset_index()
+
+    for i, date in enumerate(total_counts['Actual Date']):
+        fig.add_annotation(
+            x=date,
+            y=total_counts['Session Count'][i] + 0.9,
+            text=str(total_counts['Session Count'][i]),
+            showarrow=False,
+            align='center',
+            font_size=16,
+            font=dict(color='black')
+        )
+
+    fig.update_layout(
+        title='Session Count of All EPods till Date',
+        xaxis_title='Date',
+        yaxis_title='Session Count',
+        xaxis_tickangle=-45,
+        width=1200,
+        legend_title='HSZs: ',
+    )
+
+    with col1:
+        st.plotly_chart(fig, use_container_width=False)
+
+    filtered_data = combined_df[combined_df['EPOD Name'].isin(EPod)]
+
+    if len(EPod) > 1:
+        col1, col2, col3, col4, col5, col6 = st.columns(6)
+        filtered_data = filtered_data.sort_values('EPOD Name')
+        for epod in filtered_data['EPOD Name'].unique():
+            with col1:
+                st.subheader(epod)
+            filtered_data = combined_df[
+                (combined_df['Actual Date'] >= start_date) & (combined_df['Actual Date'] <= end_date)]
+            final_df_count = filtered_data[filtered_data['EPOD Name'] == epod].groupby(
+                ['Actual Date', 'Customer Location City']).size().reset_index(name='Session Count')
+            final_df_count['Actual Date'] = final_df_count['Actual Date'].dt.strftime('%d/%m/%y')
+            final_df_count = final_df_count.sort_values('Actual Date', ascending=True)
+            sumcount = final_df_count['Session Count'].sum()
+            revenue = sumcount * 150
+            revenue = formatINR(revenue)
+            sumcount = formatINR(sumcount)
+            col1.metric(f"Total Sessions by {epod}", sumcount)
+            col1.metric("Total Revenue", f"\u20B9{revenue}")
+
+            fig = px.bar(final_df_count, x='Actual Date', y='Session Count', color='Customer Location City',
+                         color_discrete_map={'Delhi': '#243465', 'Gurugram': ' #5366a0', 'Noida': '#919fc8'},
+                         text='Session Count')
+            total_counts = final_df_count.groupby('Actual Date')['Session Count'].sum().reset_index()
+
+            for i, date in enumerate(total_counts['Actual Date']):
+                fig.add_annotation(
+                    x=date,
+                    y=total_counts['Session Count'][i] + 0.2,
+                    text=str(total_counts['Session Count'][i]),
+                    showarrow=False,
+                    align='center',
+                    font_size=18,
+                    font=dict(color='black')
+                )
+
+            fig.update_xaxes(categoryorder='category ascending')
+            fig.update_layout(
+                title='Session Count by Date',
+                xaxis_title='Date',
+                yaxis_title=f'Session Count of {epod}',
+                xaxis_tickangle=-45,
+                width=1200,
+                legend_title='HSZs: '
+            )
+            with col1:
+                st.plotly_chart(fig)
+
+
+# Run the main page function
+main_page()
