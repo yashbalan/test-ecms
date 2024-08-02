@@ -17,21 +17,50 @@ def clean_license_plate(plate):
     return plate
 
 # Function to get data from the API
-def fetch_data(url):
+# Function to get JWT token from the API
+def fetch_jwt_token():
+    login_url = "https://2e855a4f93a0.api.hopcharge.com/admin/api/v1/login"
     payload = {
         "username": "admin",
         "password": "Hopadmin@2024#"
     }
     headers = {
-        'accept': 'application/json',
-        'authorization': 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOiI3NDIxZDRmNi0zZWI2LTRhODItOWU0Ny02MWU3MWViOTI5Y2EiLCJlbWFpbCI6ImhlbGxvQGhvcGNoYXJnZS5jb20iLCJwaG9uZU51bWJlciI6Iis5MTkzMTE2NjEyODgsICs5MTkyODkwNDYyOTcsKzkxOTgyMDg1NDAwNiwrOTE4NTg4ODYyNjQ4LCs5MTcwNTM0NTcxMjQiLCJmaXJzdE5hbWUiOiJTdXBlciIsImxhc3ROYW1lIjoiQWRtaW4iLCJjcmVhdGVkIjoiMjAyMS0wNi0wMVQxNzowMTozMC42MjhaIiwidXBkYXRlZCI6IjIwMjQtMDQtMDlUMDU6MTc6NDcuNzQ4WiIsImxhc3RMb2dpbiI6IjIwMjQtMDctMjRUMDU6Mzc6MjMuNTM3WiIsImxhc3RMb2dvdXQiOiIyMDI0LTA0LTA5VDA1OjE3OjQ3Ljc0OVoiLCJ1c2VybmFtZSI6ImFkbWluIiwicm9sZSI6InN1cGVyYWRtaW4iLCJpYXQiOjE3MjE3OTk0NDN9.eg_aP1gUcAJXGX1jNMgFX6CAfeLDSc5JpFFMWVG_ttU'
+        'Content-Type': 'application/json',
+        'accept': 'application/json'
     }
-    response = requests.get(url, headers=headers, data=payload)
+    response = requests.post(login_url, headers=headers, json=payload)
+
+    # Check if the request was successful
+    if response.status_code == 200:
+        token = response.json().get('token')
+        return token
+    else:
+        st.error("Failed to fetch JWT token")
+        return None
+
+    # Function to get data from the API
+
+
+def fetch_data(url, token):
+    headers = {
+        'accept': 'application/json',
+        'accept-language': 'en-US,en;q=0.9',
+        'authorization': f'Bearer {token}'
+    }
+    response = requests.get(url, headers=headers)
+
+    # Try to parse the response JSON
     response_json = response.json()
     if 'data' in response_json:
         return pd.json_normalize(response_json['data'])
     else:
         return pd.DataFrame()  # Return an empty DataFrame if 'data' key is not found
+
+    # Fetch the JWT token
+
+
+jwt_token = fetch_jwt_token()
+        
 
 # Function to get data from CSV files
 def get_csv_files(directory_path):
@@ -50,8 +79,8 @@ url_bookings = "https://2e855a4f93a0.api.hopcharge.com/admin/api/v1/bookings/pas
 url_drivers = "https://2e855a4f93a0.api.hopcharge.com/admin/api/v1/drivers-shifts/export-list?filter={\"action\":\"exporter\",\"startedAt_lte\":\"2024-06-01\",\"endedAt_gte\":\"2024-12-31\"}"
 
 # Fetch data from the APIs
-past_bookings_df = fetch_data(url_bookings)
-drivers_shifts_df = fetch_data(url_drivers)
+past_bookings_df = fetch_data(url_bookings, jwt_token)
+drivers_shifts_df = fetch_data(url_drivers, jwt_token)
 
 # Load and clean CSV data
 csv_directory_path = './data'
