@@ -163,49 +163,49 @@ def formatINR(number):
     r = ",".join([s[x - 2:x] for x in range(-3, -len(s), -2)][::-1] + [s[-3:]])
     return "".join([r] + d)
 
-def check_credentials():
-    st.markdown(
-        """
-            <style>
-                .appview-container .main .block-container {{
-                    padding-top: {padding_top}rem;
-                    padding-bottom: {padding_bottom}rem;
-                    }}
+# def check_credentials():
+#     st.markdown(
+#         """
+#             <style>
+#                 .appview-container .main .block-container {{
+#                     padding-top: {padding_top}rem;
+#                     padding-bottom: {padding_bottom}rem;
+#                     }}
 
-            </style>""".format(
-            padding_top=1, padding_bottom=1
-        ),
-        unsafe_allow_html=True,
-    )
-    col1, col2, col3 = st.columns(3)
+#             </style>""".format(
+#             padding_top=1, padding_bottom=1
+#         ),
+#         unsafe_allow_html=True,
+#     )
+#     col1, col2, col3 = st.columns(3)
 
-    image = Image.open('LOGO HOPCHARGE-03.png')
-    col2.image(image, use_column_width=True)
-    col2.markdown(
-        "<h2 style='text-align: center;'>ECMS Login</h2>", unsafe_allow_html=True)
-    image = Image.open('roaming vans.png')
-    col1.image(image, use_column_width=True)
+#     image = Image.open('LOGO HOPCHARGE-03.png')
+#     col2.image(image, use_column_width=True)
+#     col2.markdown(
+#         "<h2 style='text-align: center;'>ECMS Login</h2>", unsafe_allow_html=True)
+#     image = Image.open('roaming vans.png')
+#     col1.image(image, use_column_width=True)
 
-    with col2:
-        username = st.text_input("Username")
-        password = st.text_input(
-            "Password", type="password")
-    flag = 0
-    if username in st.secrets["username"] and password in st.secrets["password"]:
-        index = st.secrets["username"].index(username)
-        if st.secrets["password"][index] == password:
-            st.session_state["logged_in"] = True
-            flag = 1
-        else:
-            col2.warning("Invalid username or password.")
-            flag = 0
-    elif username not in st.secrets["username"] or password not in st.secrets["password"]:
-        col2.warning("Invalid username or password.")
-        flag = 0
-    ans = [username, flag]
-    return ans
+#     with col2:
+#         username = st.text_input("Username")
+#         password = st.text_input(
+#             "Password", type="password")
+#     flag = 0
+#     if username in st.secrets["username"] and password in st.secrets["password"]:
+#         index = st.secrets["username"].index(username)
+#         if st.secrets["password"][index] == password:
+#             st.session_state["logged_in"] = True
+#             flag = 1
+#         else:
+#             col2.warning("Invalid username or password.")
+#             flag = 0
+#     elif username not in st.secrets["username"] or password not in st.secrets["password"]:
+#         col2.warning("Invalid username or password.")
+#         flag = 0
+#     ans = [username, flag]
+#     return ans
 
-def main_page(username):
+def main_page():
     st.markdown(
         """
         <script>
@@ -353,13 +353,4 @@ def main_page(username):
             with col1:
                 st.plotly_chart(fig)
 
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-if st.session_state.logged_in:
-    main_page(st.session_state.username)
-else:
-    ans = check_credentials()
-    if ans[1]:
-        st.session_state.logged_in = True
-        st.session_state.username = ans[0]
-        st.experimental_rerun()
+main_page()
