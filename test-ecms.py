@@ -5,9 +5,30 @@ from PIL import Image
 import requests
 import re
 import os
+from datetime import datetime, timedelta
 
 # Streamlit configuration
 st.set_page_config(layout="wide", page_title="Hopcharge Dashboard", page_icon=":bar_chart:")
+
+# Hardcoded credentials for different users and their access to EPODs
+credentials = {
+    "master": {
+        "username": "admin",
+        "password": "Hopadmin@2024#",
+        "epods": "all"
+    },
+    "epod_user_1": {
+        "username": "user1",
+        "password": "password1",
+        "epods": ["EPOD-005", "EPOD-007"]
+    },
+    "epod_user_2": {
+        "username": "user2",
+        "password": "password2",
+        "epods": ["EPOD-010", "EPOD-011, "EPOD-012"]
+    },
+    # Add more users and their corresponding EPODs as needed
+}
 
 # Function to clean license plates
 def clean_license_plate(plate):
@@ -16,7 +37,6 @@ def clean_license_plate(plate):
         return match.group(1)
     return plate
 
-# Function to get data from the API
 # Function to get JWT token from the API
 def fetch_jwt_token():
     login_url = "https://2e855a4f93a0.api.hopcharge.com/admin/api/v1/login"
@@ -38,9 +58,7 @@ def fetch_jwt_token():
         st.error("Failed to fetch JWT token")
         return None
 
-    # Function to get data from the API
-
-
+# Function to get data from the API
 def fetch_data(url, token):
     headers = {
         'accept': 'application/json',
@@ -56,11 +74,8 @@ def fetch_data(url, token):
     else:
         return pd.DataFrame()  # Return an empty DataFrame if 'data' key is not found
 
-    # Fetch the JWT token
-
-
+# Fetch the JWT token
 jwt_token = fetch_jwt_token()
-        
 
 # Function to get data from CSV files
 def get_csv_files(directory_path):
@@ -163,49 +178,50 @@ def formatINR(number):
     r = ",".join([s[x - 2:x] for x in range(-3, -len(s), -2)][::-1] + [s[-3:]])
     return "".join([r] + d)
 
-# def check_credentials():
-#     st.markdown(
-#         """
-#             <style>
-#                 .appview-container .main .block-container {{
-#                     padding-top: {padding_top}rem;
-#                     padding-bottom: {padding_bottom}rem;
-#                     }}
+def check_credentials():
+    st.markdown(
+        """
+            <style>
+                .appview-container .main .block-container {{
+                    padding-top: {padding_top}rem;
+                    padding-bottom: {padding_bottom}rem;
+                    }}
 
-#             </style>""".format(
-#             padding_top=1, padding_bottom=1
-#         ),
-#         unsafe_allow_html=True,
-#     )
-#     col1, col2, col3 = st.columns(3)
+            </style>""".format(
+            padding_top=1, padding_bottom=1
+        ),
+        unsafe_allow_html=True,
+    )
+    col1, col2, col3 = st.columns(3)
 
-#     image = Image.open('LOGO HOPCHARGE-03.png')
-#     col2.image(image, use_column_width=True)
-#     col2.markdown(
-#         "<h2 style='text-align: center;'>ECMS Login</h2>", unsafe_allow_html=True)
-#     image = Image.open('roaming vans.png')
-#     col1.image(image, use_column_width=True)
+    image = Image.open('LOGO HOPCHARGE-03.png')
+    col2.image(image, use_column_width=True)
+    col2.markdown(
+        "<h2 style='text-align: center;'>ECMS Login</h2>", unsafe_allow_html=True)
+    image = Image.open('roaming vans.png')
+    col1.image(image, use_column_width=True)
 
-#     with col2:
-#         username = st.text_input("Username")
-#         password = st.text_input(
-#             "Password", type="password")
-#     flag = 0
-#     if username in st.secrets["username"] and password in st.secrets["password"]:
-#         index = st.secrets["username"].index(username)
-#         if st.secrets["password"][index] == password:
-#             st.session_state["logged_in"] = True
-#             flag = 1
-#         else:
-#             col2.warning("Invalid username or password.")
-#             flag = 0
-#     elif username not in st.secrets["username"] or password not in st.secrets["password"]:
-#         col2.warning("Invalid username or password.")
-#         flag = 0
-#     ans = [username, flag]
-#     return ans
+    with col2:
+        username = st.text_input("Username")
+        password = st.text_input(
+            "Password", type="password")
+    flag = 0
+    
+    for user, info in credentials.items():
+        if username == info["username"] and password == info["password"]:
+            st.session_state["logged_in"] = True
+            st.session_state["username"] = username
+            st.session_state["epods"] = info["epods"]
+            flag = 1
+            break
+    
+    if not flag:
+        col2.warning("Invalid username or password.")
+        
+    ans = [username, flag]
+    return ans
 
-def main_page():
+def main_page(username):
     st.markdown(
         """
         <script>
@@ -237,23 +253,25 @@ def main_page():
 
     col1, col2, col3, col4, col5, col6 = st.columns(6)
 
+    # Set default start and end dates to the last 7 days
+    today = datetime.now().date()
+    default_start_date = today - timedelta(days=7)
+    min_date = combined_df['Actual Date'].min().date()
+    max_date = combined_df['Actual Date'].max().date()
+
     with col1:
-        combined_df['Actual Date'] = pd.to_datetime(combined_df['Actual Date'], errors='coerce')
-        min_date = combined_df['Actual Date'].min().date()
-        max_date = combined_df['Actual Date'].max().date()
-        start_date = st.date_input('Start Date', min_value=min_date, max_value=max_date, value=min_date,
+        start_date = st.date_input('Start Date', min_value=min_date, max_value=max_date, value=default_start_date,
                                    key="epod-date-start")
     with col2:
-        end_date = st.date_input('End Date', min_value=min_date, max_value=max_date, value=max_date,
+        end_date = st.date_input('End Date', min_value=min_date, max_value=max_date, value=today,
                                  key="epod-date-end")
 
-    def get_epods_by_username(df, input_username):
-        filtered_df = df[df['username'].str.contains(input_username, na=False)]
-        epod_list = filtered_df['EPOD Name'].tolist()
+    def get_epods_by_username(username):
+        if st.session_state["epods"] == "all":
+            return df_epod['EPOD Name'].unique().tolist()
+        return st.session_state["epods"]
 
-        return epod_list
-
-    epods = get_epods_by_username(df_epod, username)
+    epods = get_epods_by_username(username)
 
     with col3:
         EPod = st.multiselect(label='Select The EPod', options=['All'] + epods, default='All')
@@ -353,4 +371,13 @@ def main_page():
             with col1:
                 st.plotly_chart(fig)
 
-main_page()
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+if st.session_state.logged_in:
+    main_page(st.session_state.username)
+else:
+    ans = check_credentials()
+    if ans[1]:
+        st.session_state.logged_in = True
+        st.session_state.username = ans[0]
+        st.experimental_rerun()
